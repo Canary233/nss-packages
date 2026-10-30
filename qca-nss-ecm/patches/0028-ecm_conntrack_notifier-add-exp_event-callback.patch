@@ -1,0 +1,40 @@
+From: Canary233 <2096276316@qq.com>
+Subject: ecm_conntrack_notifier: provide exp_event callback
+
+struct nf_ct_event_notifier has both .ct_event and .exp_event since
+kernel 5.15.  ECM only fills in .ct_event, so an expectation event
+(e.g. FTP data connection expectation on a forwarded flow) makes
+nf_ct_expect_event_report() call a NULL function pointer and crash.
+
+Register a no-op .exp_event callback; ECM does not need expectation
+events.
+
+--- a/ecm_conntrack_notifier.c
++++ b/ecm_conntrack_notifier.c
+@@ -380,6 +380,18 @@ static int ecm_conntrack_event(unsigned i
+ 	return NOTIFY_DONE;
+ }
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
++/*
++ * ecm_conntrack_exp_event()
++ *	ECM does not track expectations; provide a no-op callback so the
++ *	kernel does not call a NULL exp_event pointer.
++ */
++static int ecm_conntrack_exp_event(unsigned int events, const struct nf_exp_event *item)
++{
++	return NOTIFY_DONE;
++}
++#endif
++
+ /*
+  * struct nf_ct_event_notifier ecm_conntrack_notifier
+  *	Netfilter conntrack event system to monitor connection tracking changes
+@@ -388,7 +400,8 @@ static struct nf_ct_event_notifier ecm_c
+     .fcn	= ecm_conntrack_event,
+ #else
+     .ct_event	= ecm_conntrack_event,
++    .exp_event	= ecm_conntrack_exp_event,
+ #endif
+ };
+ #endif
